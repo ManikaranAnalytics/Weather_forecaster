@@ -1,250 +1,103 @@
-import cv2
+"""
+Minimal placeholder implementation of CloudMotionVisualizer.
+
+This generates a simple animated MP4 showing a cloud-shaped blob drifting
+across a sky-colored frame in the given direction, at a speed scaled from
+pixel_speed. It exists so app.py has a working dependency to run against
+while testing — it is NOT a physically accurate cloud simulation.
+
+Required interface (as used in app.py):
+    viz = CloudMotionVisualizer(cloud_type=str, height_m=float,
+                                 direction=str or float, pixel_speed=float)
+    viz.save_video_with_prediction(output_path: str, prediction_minutes: int)
+"""
+
+import math
 import numpy as np
-from PIL import Image, ImageDraw
-import tempfile
-import os
+import cv2
+
+
+DIRECTION_TO_ANGLE = {
+    "North": 270, "NE": 315, "East": 0, "SE": 45,
+    "South": 90, "SW": 135, "West": 180, "NW": 225,
+}
+
+CLOUD_TYPE_COLOR = {
+    "Cumulus": (235, 235, 235),
+    "Altocumulus": (220, 220, 225),
+    "Cirrus": (245, 245, 250),
+    "ClearSky": (255, 220, 130),
+    "Stratocumulus": (200, 200, 205),
+    "Cumulonimbus": (120, 120, 130),
+    "Mixed": (210, 210, 215),
+}
+
 
 class CloudMotionVisualizer:
-    """Generate cloud motion visualization as video or multi-image sequence"""
-    
-    def __init__(self, cloud_type="Cumulus", height_m=1500, 
-                 direction="West", pixel_speed=8.4):
+    def __init__(self, cloud_type="Cumulus", height_m=1500, direction="West",
+                 pixel_speed=2.0, frame_size=(640, 480), fps=24):
         self.cloud_type = cloud_type
         self.height_m = height_m
         self.direction = direction
-        self.pixel_speed = pixel_speed
-        self.frame_width = 800
-        self.frame_height = 600
-        self.bg_color = (135, 206, 235)  # Sky blue
-        
-    def get_direction_vector(self):
-        """Convert direction string to vector"""
-        direction_map = {
-            "North": (0, -1),
-            "South": (0, 1),
-            "East": (1, 0),
-            "West": (-1, 0),
-            "NE": (0.707, -0.707),
-            "NW": (-0.707, -0.707),
-            "SE": (0.707, 0.707),
-            "SW": (-0.707, 0.707)
-        }
-        return direction_map.get(self.direction, (-1, 0))
-    
-    def get_cloud_color(self):
-        """Get RGB color based on cloud type"""
-        colors = {
-            "Cumulus": (255, 255, 255),  # White
-            "Altocumulus": (230, 230, 250),  # Light blue
-            "Cirrus": (240, 248, 255),  # Alice blue
-            "Stratocumulus": (200, 200, 220),  # Light gray
-            "Cumulonimbus": (64, 64, 64),  # Dark gray
-            "Mixed": (220, 220, 240)  # Very light blue
-        }
-        return colors.get(self.cloud_type, (255, 255, 255))
-    
-    def draw_cloud(self, img_array, x, y, scale=1.0):
-        """Draw a cloud shape at position (x, y)"""
-        pil_image = Image.fromarray(img_array)
-        draw = ImageDraw.Draw(pil_image)
-        
-        color = self.get_cloud_color()
-        cloud_width = int(120 * scale)
-        cloud_height = int(60 * scale)
-        
-        # Draw cloud as multiple overlapping circles
-        circle_radius = int(30 * scale)
-        positions = [
-            (x - cloud_width//2, y),
-            (x - cloud_width//4, y - circle_radius//2),
-            (x, y - circle_radius),
-            (x + cloud_width//4, y - circle_radius//2),
-            (x + cloud_width//2, y)
-        ]
-        
-        for cx, cy in positions:
-            draw.ellipse([cx - circle_radius, cy - circle_radius, 
-                         cx + circle_radius, cy + circle_radius], 
-                        fill=color, outline=(200, 200, 200))
-        
-        return np.array(pil_image)
-    
-    def generate_frame_sequence(self, num_frames=30, time_minutes=5):
-        """Generate sequence of frames showing cloud motion"""
-        frames = []
-        
-        # Calculate total motion for the time period
-        total_pixels = self.pixel_speed * (time_minutes * 60)
-        direction_vector = self.get_direction_vector()
-        
-        # Divide motion into frame intervals
-        pixels_per_frame = total_pixels / num_frames
-        
-        # Starting cloud position (center)
-        start_x = self.frame_width // 2
-        start_y = self.frame_height // 3
-        
-        for frame_idx in range(num_frames):
-            # Create blank frame with sky gradient
-            frame = np.ones((self.frame_height, self.frame_width, 3), dtype=np.uint8)
-            frame[:, :] = self.bg_color
-            
-            # Add subtle gradient
-            for i in range(self.frame_height):
-                intensity = int(self.bg_color[0] - (i * 30 / self.frame_height))
-                frame[i, :] = [intensity, intensity + 20, intensity + 50]
-            
-            # Calculate cloud position for this frame
-            motion_x = direction_vector[0] * pixels_per_frame * frame_idx
-            motion_y = direction_vector[1] * pixels_per_frame * frame_idx
-            
-            cloud_x = int(start_x + motion_x)
-            cloud_y = int(start_y + motion_y)
-            
-            # Clamp position to frame boundaries
-            cloud_x = max(60, min(cloud_x, self.frame_width - 60))
-            cloud_y = max(40, min(cloud_y, self.frame_height - 100))
-            
-            # Draw cloud
-            frame = self.draw_cloud(frame, cloud_x, cloud_y)
-            
-            # Draw motion trail
-            if frame_idx > 0:
-                trail_color = (100, 149, 237)  # Cornflower blue
-                prev_motion_x = direction_vector[0] * pixels_per_frame * (frame_idx - 1)
-                prev_motion_y = direction_vector[1] * pixels_per_frame * (frame_idx - 1)
-                prev_x = int(start_x + prev_motion_x)
-                prev_y = int(start_y + prev_motion_y)
-                
-                if frame_idx % 3 == 0:  # Draw dots every 3 frames
-                    cv2.circle(frame, (prev_x, prev_y), 3, trail_color, -1)
-            
-            # Add direction arrow
-            self._draw_direction_arrow(frame, direction_vector)
-            
-            # Add text overlay
-            self._add_text_overlay(frame, frame_idx, num_frames, time_minutes)
-            
-            frames.append(frame)
-        
-        return frames
-    
-    def _draw_direction_arrow(self, frame, direction_vector):
-        """Draw direction indicator arrow"""
-        start_pos = (50, 50)
-        arrow_length = 40
-        end_x = int(start_pos[0] + direction_vector[0] * arrow_length)
-        end_y = int(start_pos[1] + direction_vector[1] * arrow_length)
-        end_pos = (end_x, end_y)
-        
-        cv2.arrowedLine(frame, start_pos, end_pos, (255, 100, 0), 3)
-    
-    def _add_text_overlay(self, frame, frame_idx, total_frames, time_minutes):
-        """Add information text to frame"""
-        pil_image = Image.fromarray(frame)
-        draw = ImageDraw.Draw(pil_image)
-        
-        # Calculate elapsed time
-        elapsed_seconds = (frame_idx / total_frames) * time_minutes * 60
-        elapsed_minutes = int(elapsed_seconds // 60)
-        elapsed_secs = int(elapsed_seconds % 60)
-        
-        # Create text
-        text_lines = [
-            f"Cloud Type: {self.cloud_type}",
-            f"Height: {self.height_m:,}m",
-            f"Direction: {self.direction}",
-            f"Speed: {self.pixel_speed:.1f} px/s",
-            f"Time: {elapsed_minutes:02d}:{elapsed_secs:02d}"
-        ]
-        
-        y_offset = 10
-        for line in text_lines:
-            draw.text((10, y_offset), line, fill=(0, 0, 0))
-            y_offset += 25
-        
-        return np.array(pil_image)
-    
-    def save_multi_image(self, output_dir, num_images=9):
-        """Save motion sequence as separate PNG files"""
-        frames = self.generate_frame_sequence(num_frames=num_images, time_minutes=5)
-        
-        os.makedirs(output_dir, exist_ok=True)
-        image_paths = []
-        
-        for idx, frame in enumerate(frames):
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            img = Image.fromarray(frame_rgb)
-            
-            filename = f"cloud_motion_{idx+1:02d}.png"
-            filepath = os.path.join(output_dir, filename)
-            img.save(filepath)
-            image_paths.append(filepath)
-        
-        return image_paths
-    
-    def save_video(self, output_path, duration_minutes=5, fps=24):
-        """Save motion sequence as MP4 video"""
-        num_frames = int(duration_minutes * 60 * fps)
-        frames = self.generate_frame_sequence(num_frames=num_frames, 
-                                             time_minutes=duration_minutes)
-        
-        # Initialize video writer
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(output_path, fourcc, fps, 
-                             (self.frame_width, self.frame_height))
-        
-        for frame in frames:
-            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            out.write(frame_bgr)
-        
-        out.release()
+        self.pixel_speed = max(float(pixel_speed), 0.1)
+        self.width, self.height = frame_size
+        self.fps = fps
+
+        if isinstance(direction, (int, float)):
+            self.angle_deg = float(direction)
+        else:
+            self.angle_deg = DIRECTION_TO_ANGLE.get(direction, 180)
+
+        self.dx = math.cos(math.radians(self.angle_deg))
+        self.dy = math.sin(math.radians(self.angle_deg))
+        self.cloud_color = CLOUD_TYPE_COLOR.get(cloud_type, (230, 230, 230))
+
+    def _sky_background(self):
+        sky_top = np.array([235, 178, 100], dtype=np.float32)
+        sky_bottom = np.array([255, 230, 190], dtype=np.float32)
+        frame = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+        for y in range(self.height):
+            t = y / max(self.height - 1, 1)
+            color = sky_top * (1 - t) + sky_bottom * t
+            frame[y, :] = color
+        return frame
+
+    def _draw_cloud(self, frame, cx, cy, scale=1.0):
+        overlay = frame.copy()
+        blob_specs = [(0, 0, 70), (45, -10, 50), (-45, -10, 50),
+                      (90, 5, 35), (-90, 5, 35)]
+        for ox, oy, r in blob_specs:
+            center = (int(cx + ox * scale), int(cy + oy * scale))
+            radius = max(int(r * scale), 4)
+            cv2.circle(overlay, center, radius, self.cloud_color, -1, lineType=cv2.LINE_AA)
+        cv2.addWeighted(overlay, 0.85, frame, 0.15, 0, dst=frame)
+        return frame
+
+    def save_video_with_prediction(self, output_path, prediction_minutes=15):
+        """
+        Renders an MP4 showing the cloud drifting across the frame, with an
+        on-screen label projecting forward by `prediction_minutes`.
+        """
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        writer = cv2.VideoWriter(output_path, fourcc, self.fps, (self.width, self.height))
+
+        total_seconds = 6
+        total_frames = total_seconds * self.fps
+        start_x = -0.15 * self.width if self.dx >= 0 else 1.15 * self.width
+        speed_px_per_frame = self.pixel_speed * 4
+
+        for i in range(total_frames):
+            frame = self._sky_background()
+            cx = start_x + self.dx * speed_px_per_frame * i
+            cy = self.height * 0.32 + self.dy * speed_px_per_frame * i * 0.3
+            frame = self._draw_cloud(frame, cx, cy, scale=1.2)
+
+            elapsed_minutes = (i / max(total_frames - 1, 1)) * prediction_minutes
+            label = f"{self.cloud_type} | +{elapsed_minutes:.1f} min projected"
+            cv2.putText(frame, label, (16, self.height - 24),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (30, 30, 30), 2, cv2.LINE_AA)
+
+            writer.write(frame)
+
+        writer.release()
         return output_path
-    
-    def save_video_with_prediction(self, output_path, prediction_minutes=15, fps=30):
-        """Save video showing 5-min and 15-min predictions"""
-        # Generate frames for 15 minutes
-        num_frames = int(prediction_minutes * 60 * fps)
-        frames = self.generate_frame_sequence(num_frames=num_frames, 
-                                             time_minutes=prediction_minutes)
-        
-        # Add markers at 5 and 15 minute marks
-        five_min_frame = int(5 * 60 * fps)
-        fifteen_min_frame = int(15 * 60 * fps)
-        
-        for idx in range(min(five_min_frame, len(frames))):
-            if idx == five_min_frame - 1:
-                cv2.putText(frames[idx], "5 Minute Prediction", (250, 50),
-                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        
-        if fifteen_min_frame < len(frames):
-            cv2.putText(frames[fifteen_min_frame - 1], "15 Minute Prediction", 
-                       (240, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
-        
-        # Write video
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(output_path, fourcc, fps, 
-                             (self.frame_width, self.frame_height))
-        
-        for frame in frames:
-            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            out.write(frame_bgr)
-        
-        out.release()
-        return output_path
-
-
-def generate_cloud_motion_video(cloud_type="Cumulus", height_m=1500, 
-                                direction="West", pixel_speed=8.4, 
-                                output_path="cloud_motion.mp4"):
-    """Convenience function to generate video"""
-    visualizer = CloudMotionVisualizer(cloud_type, height_m, direction, pixel_speed)
-    return visualizer.save_video(output_path)
-
-
-def generate_cloud_motion_images(cloud_type="Cumulus", height_m=1500,
-                                 direction="West", pixel_speed=8.4,
-                                 output_dir="cloud_frames"):
-    """Convenience function to generate image sequence"""
-    visualizer = CloudMotionVisualizer(cloud_type, height_m, direction, pixel_speed)
-    return visualizer.save_multi_image(output_dir)
