@@ -14,7 +14,7 @@ from collections import Counter
 from PIL import Image
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing import image
-from motion_visualizer import CloudMotionVisualizer
+from src.tracking.motion_visualizer import CloudMotionVisualizer
 
 # ===== YOUTUBE VIDEO DOWNLOAD (for "paste a YouTube link" support) =====
 # pip install yt-dlp
@@ -493,11 +493,11 @@ import base64 as _b64
 
 @st.cache_resource
 def _load_bg_image_b64(_cache_key):
-    bg_path = os.path.join(os.path.dirname(__file__), "sky_bg.jpg")
+    bg_path = os.path.join(os.path.dirname(__file__), "assets", "sky_bg.jpg")
     with open(bg_path, "rb") as f:
         return _b64.b64encode(f.read()).decode("ascii")
 
-_bg_path_for_mtime = os.path.join(os.path.dirname(__file__), "sky_bg.jpg")
+_bg_path_for_mtime = os.path.join(os.path.dirname(__file__), "assets", "sky_bg.jpg")
 _bg_mtime = os.path.getmtime(_bg_path_for_mtime) if os.path.exists(_bg_path_for_mtime) else 0
 _BG_IMG_B64 = _load_bg_image_b64(_bg_mtime)
 
@@ -1117,7 +1117,7 @@ video {
 # ─────────────────────────── MODEL ─────────────────────────────
 @st.cache_resource
 def load_cloud_model():
-    return load_model("cloud_model.keras")
+    return load_model(os.path.join(os.path.dirname(__file__), "models", "cloud_model.keras"))
 
 model = load_cloud_model()
 
@@ -2866,7 +2866,7 @@ def detect_clouds(frame, sky_h, use_efficientnet=None):
         variant, use_en = "B0", use_efficientnet if use_efficientnet is not None else True
 
     try:
-        from cloud_box_detector import detect_clouds_realistic
+        from src.detection.cloud_box_detector import detect_clouds_realistic
         boxes = detect_clouds_realistic(frame, sky_h, use_efficientnet=use_en, variant=variant)
         return boxes, gray
     except Exception:
@@ -2956,7 +2956,7 @@ def detect_clouds(frame, sky_h, use_efficientnet=None):
 
     if use_en:
         try:
-            from efficientnet_cloud_detector import merge_and_refine_detections
+            from src.detection.efficientnet_cloud_detector import merge_and_refine_detections
             boxes = merge_and_refine_detections(
                 frame, sky_h, boxes, variant=variant, use_efficientnet=True
             )
@@ -2964,7 +2964,7 @@ def detect_clouds(frame, sky_h, use_efficientnet=None):
             pass
     else:
         try:
-            from efficientnet_cloud_detector import merge_and_refine_detections
+            from src.detection.efficientnet_cloud_detector import merge_and_refine_detections
             boxes = merge_and_refine_detections(
                 frame, sky_h, boxes, variant=variant, use_efficientnet=False
             )
@@ -3110,7 +3110,7 @@ def draw_boxes_on_frame(frame, speed_kmh, direction, cloud_type, height_m,
                     roi_pixel_disp, delta_t, cloud_type, OUT_W, fov
                 )
                 try:
-                    from cloud_box_detector import smooth_box_speed
+                    from src.detection.cloud_box_detector import smooth_box_speed
                     cloud_speed_kmh = smooth_box_speed(raw_kmh, speed_kmh)
                 except Exception:
                     cloud_speed_kmh = speed_kmh
@@ -3285,7 +3285,7 @@ def generate_boxed_video(input_path, output_path, speed_kmh, speed_mps,
             cached_boxes, _ = detect_clouds(frame, sky_h, use_efficientnet=run_en)
         elif prev_gray is not None and cached_boxes:
             try:
-                from cloud_box_detector import track_boxes_optical_flow
+                from src.detection.cloud_box_detector import track_boxes_optical_flow
                 cached_boxes = track_boxes_optical_flow(prev_gray, gray, cached_boxes, sky_h)
             except Exception:
                 pass

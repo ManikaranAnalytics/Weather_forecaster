@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 
 # Virtual environments
+.venv/
 venv/
 venv311/
 .env/
@@ -47,6 +48,7 @@ desktop.ini
 *.log
 *.tmp
 *.temp
+zip/
 
 # Database files (ignore any local DB files)
 *.db
@@ -79,9 +81,20 @@ secrets.json
 *.jpeg
 *.png
 
-# Ignore large project data directories
-cloud_motion_frames/
-dataset/
-frames/
-videos/
-venv311/
+# Keep UI assets and small test fixtures tracked
+!assets/
+!assets/**
+!tests/fixtures/
+!tests/fixtures/**
+
+# Large data / local weight parks
+data/dataset/
+data/frames/
+data/videos/
+data/outputs/
+models/yolo/
+models/clip/
+weights/
+
+# Nested clone (separate repo)
+Weather_forecaster/

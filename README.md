@@ -10,7 +10,7 @@ A Python-based sky analysis system that classifies cloud types, estimates cloud 
 
 | Area | What it does |
 |------|----------------|
-| **Cloud classification** | 7 cloud types via MobileNetV2 (`cloud_model.keras`) |
+| **Cloud classification** | 7 cloud types via MobileNetV2 (`models/cloud_model.keras`) |
 | **Cloud detection** | Contour + mask pipeline with optional EfficientNet-B0/B3 validation |
 | **Speed estimation** | Farneback optical flow + camera geometry (FOV, focal length, cloud height) |
 | **Height estimation** | Type-based default heights; triangulation with two cameras |
@@ -108,34 +108,40 @@ The app also shows a step-by-step formula breakdown in the UI.
 
 ```
 Cloud_speed_project/
-├── app.py                        # Main Streamlit application
-├── cloud_box_detector.py         # Contour/mask cloud boxes + optical-flow tracking
-├── efficientnet_cloud_detector.py# EfficientNet patch scoring for box validation
-├── motion_visualizer.py          # Draws motion vectors and annotations on frames
-├── predict.py                    # CLI: classify a single image
-├── train.py                      # Train / fine-tune MobileNetV2 classifier
-├── cloud_speed.py                # Basic optical-flow speed demo script
-├── extract_frames.py             # Extract frames from video
-├── forecast.py                   # Forecast utilities
-├── cloud_model.keras             # Trained classification model
+├── app.py                      # Main Streamlit entry point
 ├── requirements.txt
-├── dataset/                      # Training images (7 class folders)
-├── frames/                       # Sample extracted frames
-├── videos/                       # Sample input videos
-└── cloud_motion_frames/          # Motion visualization outputs
+├── README.md
+├── src/
+│   ├── detection/              # cloud_box_detector, efficientnet_cloud_detector
+│   ├── tracking/               # motion_visualizer
+│   ├── forecasting/            # forecast helpers
+│   └── utils/                  # fps_check, image_size, dataset_info, corrupt_check
+├── scripts/                    # train, predict, extract_frames, make_dummy_model, cloud_speed
+├── models/
+│   ├── cloud_model.keras       # Required classifier weights
+│   ├── yolo/                   # Parked unused YOLO .pt files (optional)
+│   └── clip/                   # Parked unused CLIP weights (optional)
+├── data/
+│   ├── dataset/                # Training images
+│   ├── frames/
+│   ├── videos/
+│   └── outputs/cloud_motion_frames/
+├── assets/                     # sky_bg.jpg UI background
+├── tests/                      # test_motion_viz + fixtures
+└── archive/                    # app_stereo_updated.py (not merged), old design notes
 ```
 
 ---
 
 ## Training the classifier
 
-Place images under `dataset/` in class-named subfolders, then run:
+Place images under `data/dataset/` in class-named subfolders, then run:
 
 ```bash
-python train.py
+python scripts/train.py
 ```
 
-This trains MobileNetV2 with augmentation and saves `cloud_model.keras`.
+This trains MobileNetV2 with augmentation and saves `models/cloud_model.keras`.
 
 **Classes:** `Cumulus`, `Altocumulus`, `Cirrus`, `ClearSky`, `Stratocumulus`, `Cumulonimbus`, `Mixed`
 
@@ -144,7 +150,7 @@ This trains MobileNetV2 with augmentation and saves `cloud_model.keras`.
 ## Standalone prediction
 
 ```bash
-python predict.py path/to/sky_image.jpg
+python scripts/predict.py path/to/sky_image.jpg
 ```
 
 ---
@@ -153,12 +159,12 @@ python predict.py path/to/sky_image.jpg
 
 | Script | Description |
 |--------|-------------|
-| `extract_frames.py` | Pull frames from a video file |
-| `fps_check.py` | Check video frame rate |
-| `image_size.py` | Inspect image dimensions |
-| `corrupt_check.py` | Detect corrupt images in dataset |
-| `dataset_info.py` | Print dataset class counts |
-| `test_motion_viz.py` | Test motion visualizer output |
+| `scripts/extract_frames.py` | Pull frames from a video file |
+| `src/utils/fps_check.py` | Check video frame rate |
+| `src/utils/image_size.py` | Inspect image dimensions |
+| `src/utils/corrupt_check.py` | Detect corrupt images in dataset |
+| `src/utils/dataset_info.py` | Print dataset class counts |
+| `tests/test_motion_viz.py` | Test motion visualizer output |
 
 ---
 
@@ -183,10 +189,10 @@ python predict.py path/to/sky_image.jpg
 
 The following are excluded via `.gitignore` or kept local due to size:
 
-- `venv311/` — virtual environment (never commit)
-- `yolo*.pt` — YOLO weight files (download separately if needed)
-- `weights/` — additional model weights
-- Large media folders may exist locally but are optional for running the app
+- `.venv/` / `venv/` — virtual environment (never commit)
+- `models/yolo/*.pt`, `models/clip/*.pt` — unused by current app; local only
+- `data/dataset/`, `data/frames/`, `data/videos/` — large local media
+- `models/cloud_model.keras` — large weights (generate with `scripts/make_dummy_model.py` or train)
 
 ---
 
